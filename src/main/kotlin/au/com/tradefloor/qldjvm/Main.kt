@@ -11,27 +11,39 @@ import java.util.regex.Pattern
 
 fun main(args: Array<String>) {
 
+    // Types are implied (String in this case)
     val reportFile = File(args[0])
 
     // ARC replacement
     WorkbookFactory.create(OPCPackage.open(reportFile, PackageAccess.READ)).use {
 
+        // unsafe cast to non null type
+        // Implicit 'it' variable from 'use' function
         val overviewSheet = it.getSheet("Overview")!!
         parseOverviewSheet(overviewSheet)
 
         val daybookSheet = it.getSheet("Daybook")!!
         parseDaybookSheet(daybookSheet)
 
-
     }
 }
 
 private fun parseDaybookSheet(daybookSheet: Sheet) {
 
+    println(
+"""
+    |Row, Account Number, Account Name, Cnote Number
+""".trimMargin()) // Trim margin takes an optional margin with a default of '|'
+
+    // Helper to convert from ()->Iterator<T> to Kotlin specific Sequence (similar to a Java Stream)
     Sequence(daybookSheet::rowIterator)
             .drop(2)
             .filter(Row::hasData)
             .map { DaybookEntry(it.getCell(0).stringCellValue!!, it.getCell(1).stringCellValue!!, it.getCell(2).numericCellValue.toInt()) }
+            // Copy is provided by data classes to help write immutable objects
+            // All params are options, so using named parameters helps reduce number of overloaded methods
+            .map { it.copy(accountName = "*** MASKED ***") }
+            // String template/interpolation
             .forEachIndexed { index, daybookEntry ->  println("${index + 1}, ${daybookEntry.accountNumber}, ${daybookEntry.accountName}, ${daybookEntry.cnoteNumber}") }
 }
 
@@ -39,16 +51,19 @@ private fun parseOverviewSheet(overviewSheet: Sheet) {
     val reportDatePattern = Pattern.compile("Equity Advisor Reports for (.+?, .+? \\d{2}, \\d{4})")
     val reportDateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM dd, yyyy")
 
-    val reportDate: LocalDate? = Sequence(overviewSheet::rowIterator)
+    // Implied type here is LocalDate? as firstOrNull could return null
+    val reportDate = Sequence(overviewSheet::rowIterator)
+            // Only process at most 4 elements from source iterator
             .take(4)
             .map { it.cell(reportDatePattern) }
+            // Removes null values so type can be Sequence<Cell> instead of Sequence<Cell?>
             .filterNotNull()
             .map(Cell::getStringCellValue)
             .map {reportDatePattern.matcher(it)}
             .filter(Matcher::matches)
             .map { it.group(1) }
             .map { LocalDate.parse(it, reportDateFormatter) }
-            .first()
+            .firstOrNull()
 
     // fancy if/then/else and case together
     when {
