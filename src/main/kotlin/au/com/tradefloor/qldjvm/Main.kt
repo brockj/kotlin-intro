@@ -39,21 +39,16 @@ private fun parseDaybookSheet(daybookSheet: Sheet) {
     Sequence(daybookSheet::rowIterator)
             .drop(2)
             .filter(Row::hasData)
-            // getCell is actually unsafe, but not picked up by type checking
-            .map {
-                DaybookEntry(it.getCell(0).stringCellValue,
-                             it.getCell(1).stringCellValue,
-                             it.getCell(2).numericCellValue.toInt())
-            }
+            .map(Row::toDaybookEntry)
             // Copy is provided by data classes to help write immutable objects
             // All params are options, so using named parameters helps reduce number of overloaded methods
             .map { it.copy(accountName = "*** MASKED ***") }
             // String template/interpolation
-            .forEachIndexed { index, daybookEntry -> println("${index + 1}, \"${daybookEntry.accountNumber}\", \"${daybookEntry.accountName}\", ${daybookEntry.cnoteNumber}") }
+            .forEachIndexed { index, daybookEntry -> println("""${index + 1}, "${daybookEntry.accountNumber}", "${daybookEntry.accountName}", ${daybookEntry.cnoteNumber}""") }
 }
 
 private fun parseOverviewSheet(overviewSheet: Sheet) {
-    val reportDatePattern = Pattern.compile("Equity Advisor Reports for (.+?, .+? \\d{2}, \\d{4})")
+    val reportDatePattern = Pattern.compile("""Equity Advisor Reports for (.+?, .+? \d{2}, \d{4})""")
     val reportDateFormatter = DateTimeFormatter.ofPattern("EEEE, MMMM dd, yyyy")
 
     // Implied type here is LocalDate? as firstOrNull could return null
@@ -71,8 +66,17 @@ private fun parseOverviewSheet(overviewSheet: Sheet) {
             .firstOrNull()
 
     // fancy if/then/else and case together
-    when {
-        reportDate != null -> println("Date in report was $reportDate")
-        else -> println("Unable to find date in overview sheet")
+    when(reportDate) {
+        null -> println("Unable to find date in overview sheet")
+        LocalDate.now() -> println("Report date is today")
+        else -> println("Date in report was $reportDate")
     }
+}
+
+// This extension function is internal to hide the conversion from other modules
+internal fun Row.toDaybookEntry() : DaybookEntry {
+    // getCell is not null safe, but not picked up by type checking
+    return DaybookEntry(this.getCell(0).stringCellValue,
+                 this.getCell(1).stringCellValue,
+                 this.getCell(2).numericCellValue.toInt())
 }
